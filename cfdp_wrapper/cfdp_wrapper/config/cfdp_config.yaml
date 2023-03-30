@@ -1,0 +1,10 @@
+entities:
+  - name: "GSW-ROS"
+    id: 1
+    apid: 0x08C2
+  - name: "FSW-ROS"
+    id: 2
+    apid: 0x08C3
+  - name: "cFE"
+    id: 25
+    apid: 0x18c8

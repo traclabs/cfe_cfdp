@@ -16,9 +16,10 @@ find_package(std_msgs REQUIRED)
 find_package(rclpy REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/CfdpMdpu.msg"
+  "msg/CfdpPdu.msg"
   "srv/CfdpCmd.srv"
   "srv/CfdpXfrCmd.srv"
+  DEPENDENCIES std_msgs
   )
 
 if(BUILD_TESTING)
