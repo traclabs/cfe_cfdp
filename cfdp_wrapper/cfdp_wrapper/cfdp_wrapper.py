@@ -16,7 +16,6 @@ from cfdp.filestore import NativeFileStore
 from cfdp.constants import ConditionCode, FaultHandlerAction
 
 from cfdp_msgs.srv import CfdpCmd, CfdpXfrCmd
-#from cfdp_msgs.msg import CfdpPdu
 from cfe_msgs.msg import BinaryPktPayload  # Default binary packet format
 
 DEFAULT_MAXIMUM_PACKET_LENGTH = 4096
@@ -55,7 +54,7 @@ class RosTransport(Transport):
         #  into an array of individual byte objects (byte[])
         msg_data = [i.to_bytes(1, sys.byteorder) for i in data]
 
-        print(f"publish msg.data=" + str(msg_data))
+        print(f"publish msg.data=" + data.hex())
         
         entity['publisher'].publish(BinaryPktPayload(data=msg_data))
         self.sent = self.sent+1
@@ -110,17 +109,14 @@ class CFDPWrapper(Node):
             1: {
                 "name": "GSW-ROS",
                 "id": 1,
-                "apid": 0x08C2
             },
             2: {
                 "name": "FSW-ROS",
                 "id": 2,
-                "apid": 0x08C3
             },
             25: {
                 "name": "cFE",
                 "id": 25,
-                "apid": 0x18c8
             }
         }
  
@@ -136,6 +132,7 @@ class CFDPWrapper(Node):
             if entity['id'] == self.entityID:
                 local_cnt += 1
             else:
+                print(f" Creating publisher of " + pduTopicPrefix + str(entity['id']))
                 entity['publisher'] = self.create_publisher(
                     BinaryPktPayload, # ByteMultiArray,  # Bytes or byteMultiArray?
                     pduTopicPrefix + str(entity['id']),
@@ -151,12 +148,7 @@ class CFDPWrapper(Node):
         else:
             self.get_logger().warn(f"entityID={self.entityID}, cfg={cfg_file}entities= {self.entities}")
 
-            
-
-        # NOTE: Timer is not necessary, but provides useful health indicator during debugging
-        self._timer_period = 10.0  # seconds
-        self._timer = self.create_timer(self._timer_period, self.timer_callback)
-        
+                    
         # Setup CFDP Entity, Transport Service, and ROS Publisher interface
         self.cfdp_ts = RosTransport(self.entities)
         self.cfdp = cfdp.CfdpEntity(
@@ -167,6 +159,7 @@ class CFDPWrapper(Node):
 
 
         # Create ROS subscription for inbound MDPUs
+        self.get_logger().info('CFDP App Subscribing to ' + pduTopicPrefix + str(self.entityID))
         self._subscribe_pdu = self.create_subscription(BinaryPktPayload,
                                                         pduTopicPrefix + str(self.entityID), # DBG: 25', # RESTORE THIS
                                                         self.cfdp_handle_packet, 10)
@@ -183,9 +176,6 @@ class CFDPWrapper(Node):
                                                              '/cfdp/cmd/get' + servicePrefix,
                                                                    self.cfdp_cmd_get)
 
-
-    def timer_callback(self):
-        self.get_logger().warn("CFDPWrapper() -- tick")
 
     def cfdp_cmd_ls(self, request, response):
         # WARNING: Doesn't work against cFE CFDP implementation
@@ -212,7 +202,7 @@ class CFDPWrapper(Node):
             return response
         
         if not self.entities[dstid]:
-            self.get_logger().warn(f"Can't executed CFDP Command to unknown dstid={dstid}")
+            self.get_logger().warn(f"Can't execute CFDP Command to unknown dstid={dstid}")
             return response # TODO: Is there a canonical way to signal to ROS that cmd failed?
 
         try:
@@ -233,14 +223,17 @@ class CFDPWrapper(Node):
     def cfdp_cmd_get(self, request, response):
         self.get_logger().info("Issuing CFDP Get " + request.src + " to " + request.dst)
 
-        if not os.path.isdir( os.path.join( self.filestore, os.path.dirname(request.dst) ) ):
-            self.get_logger().info(f"Can't execute CFDP Get Command to invalid destination path {request.dst}.")
+        if not os.path.isdir( os.path.join( self.fileStore, os.path.dirname(request.dst) ) ):
+            self.get_logger().warn(f"Can't execute CFDP Get Command to invalid destination path {request.dst}.")
             return response
+        if not self.entities[request.dstid]:
+            self.get_logger().warn(f"Can't execute CFDP Command to unknown dstid={dstid}")
+            return response # TODO: Is there a canonical way to signal to ROS that cmd failed?
         
         try:
             transaction_id = self.cfdp.put(
                 destination_id=request.dstid,
-                transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED,
+                transmission_mode=cfdp.TransmissionMode.UNACKNOWLEDGED,
 
                 messages_to_user=[
                     # We PUT a request to PUT a file back to us
@@ -258,11 +251,13 @@ class CFDPWrapper(Node):
     # Handle receipt of ROS Topic containing Binary MDPU as it's content
     def cfdp_handle_packet(self, msg):
         try:
-            self.get_logger().warn(f"CFDP received PDU {type(msg)} of length {len(msg.data)}")
+            self.get_logger().info(f"CFDP received PDU {type(msg)} of length {len(msg.data)}")
 
             # Python + ROS usage of byte definitions are inconsistent, so we need to
             # explicitly rejoin an array of individual bytes into a bytes object
             bs = b''.join(msg.data)
+
+            self.get_logger().debug(f"Handle receipt of msg.data=" + bs.hex())
         
             self.cfdp.transport.indication(bs)
         except FileNotFoundError:
