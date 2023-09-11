@@ -1,6 +1,5 @@
 uint32 dstid
-string src
-string dst
+string tgt
 bool ack false
 ---
 bool success
