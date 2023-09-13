@@ -311,14 +311,17 @@ class CFDPWrapper(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
-
-    wrapper = CFDPWrapper()
-    rclpy.spin(wrapper)
-
+    try:
+        rclpy.init(args=args)
+        wrapper = CFDPWrapper()
+        rclpy.spin(wrapper)
+    except KeyboardInterrupt:
+        print('KeyboardInterrupt seen.')
+        
     wrapper.destroy_node()
     rclpy.shutdown()
-
+    wrapper.cfdp.shutdown()
+    print("Shutdown sequence complete")
 
 if __name__ == '__main__':
     main()
