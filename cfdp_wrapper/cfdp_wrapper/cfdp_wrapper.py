@@ -3,6 +3,7 @@
 import os
 import sys
 import rclpy
+import yaml
 from rclpy.node import Node
 from rosidl_runtime_py import get_message_interfaces
 from ament_index_python.packages import get_package_share_directory
@@ -99,27 +100,22 @@ class CFDPWrapper(Node):
         pduTopicPrefix = self.get_parameter("pduTopicPrefix").get_parameter_value().string_value
 
         
-        cfgDescriptor = ParameterDescriptor(description='TODO: Load additional configuration parameters from file')
-        self.declare_parameter("config", "src/cfe_cfdp/cfdp_wrapper/cfdp_wrapper/config/cfdp_config.yaml")
+        cfgDescriptor = ParameterDescriptor(description='Load additional configuration parameters from file')
+        self.declare_parameter("config",
+                               os.path.join( get_package_share_directory("cfdp_wrapper"), 'config', "cfdp_config.yaml"))
         cfg_file = self.get_parameter("config").get_parameter_value().string_value
         
-        # TODO: Load entities from cfg_file (or directly from ROS parameters if possible)
-        # Note: key is entity ID and should match id attribute (if not defined, it will be set automatically bleow)
-        self.entities = {
-            1: {
-                "name": "GSW-ROS",
-                "id": 1,
-            },
-            2: {
-                "name": "FSW-ROS",
-                "id": 2,
-            },
-            25: {
-                "name": "cFE",
-                "id": 25,
-            }
-        }
- 
+        # Load entities from cfg_file (or directly from ROS parameters if possible)
+        with open(cfg_file, "r") as rawcfgfile:
+                  raw_cfg = yaml.safe_load(rawcfgfile)
+                  self.entities = {}
+                  for entity in raw_cfg['entities']:
+                      self.entities[entity['id']] = entity
+                  
+        #self.get_logger().warn("CFDPWrapper entities: ")
+        #self.get_logger().warn(str(self.entities))
+        #self.get_logger().warn("================================================================")
+                 
         local_cnt = 0
         remote_cnt = 0
         for entityid in self.entities:
