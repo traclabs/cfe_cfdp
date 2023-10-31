@@ -25,7 +25,7 @@ DEFAULT_MAXIMUM_PACKET_LENGTH = 4096
 class RosTransport(Transport):
 
     # entities provides Entity definitions and routing information
-    def __init__(self, entities, logger, maximum_packet_length=DEFAULT_MAXIMUM_PACKET_LENGTH):
+    def __init__(self, entities, maximum_packet_length=DEFAULT_MAXIMUM_PACKET_LENGTH, logger=None):
         super().__init__()
         self.sent = 0
         self.logger = logger
@@ -146,7 +146,7 @@ class CFDPWrapper(Node):
             self.get_logger().warn(f"entityID={self.entityID}, cfg={cfg_file}entities= {self.entities}")
 
         # Setup CFDP Entity, Transport Service, and ROS Publisher interface
-        self.cfdp_ts = RosTransport(self.entities, self.get_logger())
+        self.cfdp_ts = RosTransport(self.entities, logger=self.get_logger())
         self.cfdp = cfdp.CfdpEntity(
             entity_id=self.entityID,
             filestore=NativeFileStore(self.fileStore),  # path is relative to script launch dir
