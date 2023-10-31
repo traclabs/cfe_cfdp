@@ -21,8 +21,9 @@ from cfe_msgs.msg import BinaryPktPayload  # Default binary packet format
 
 DEFAULT_MAXIMUM_PACKET_LENGTH = 4096
 
+
 class RosTransport(Transport):
-    
+
     # entities provides Entity definitions and routing information
     def __init__(self, entities, logger, maximum_packet_length=DEFAULT_MAXIMUM_PACKET_LENGTH):
         super().__init__()
@@ -38,14 +39,14 @@ class RosTransport(Transport):
     def unbind(self):
         self.logger.infof("DEBUG: RosTransport.unbind")
         # Nothing to be done
-        
-    def request(self, data):        
+
+    def request(self, data):
         # address parameter is missing from cfdp v2.0.0 in favror of routing as parameter, but entity id is missing as parameter
         entity = self._get_entity_from_data(data)
         if not entity or not 'publisher' in entity:
             self.logger.info("CFDP ERROR: Cannot send to invalid entity")
             return
-        
+
         entityName = entity['name']
         self.logger.debug(f"found entity name {entityName} for entity {entity}")
         self.logger.info(f"CFDP Sending: len={len(data)}, Typeof {type(data)}, entity= {entity}, entityName= {entityName}")
@@ -53,11 +54,10 @@ class RosTransport(Transport):
         # ROS doesn't seem to allow a msg definition of a simple bytes array, so we must split it
         #  into an array of individual byte objects (byte[])
         msg_data = [i.to_bytes(1, sys.byteorder) for i in data]
-
         #self.logger.info(f"publish msg.data=" + data.hex())
-        
+
         entity['publisher'].publish(BinaryPktPayload(data=msg_data))
-        self.sent = self.sent+1
+        self.sent = self.sent + 1
 
     def _get_entity_from_data(self, data):
         pdu = cfdp.PduHeader.decode(data)
@@ -69,7 +69,7 @@ class RosTransport(Transport):
             self.logger.error(f"no {entity_id} in entities list")
             return False
         return self.entities[entity_id]
-        
+
         
 class CFDPWrapper(Node):
 
@@ -88,7 +88,6 @@ class CFDPWrapper(Node):
         filestoreDescriptor = ParameterDescriptor(description='The base path (relative to script launch location) for all local file operations')
         self.declare_parameter("filestore", "cfdp/rosfsw", filestoreDescriptor)
         self.fileStore = self.get_parameter("filestore").get_parameter_value().string_value
-
         # altServicesDesc = ParameterDescriptor(description="If true, append '/$entityID' to all generated services to enable testing with multiple instances")
         # self.declare_parameter('altServices', False)
         # useAltServices = self.get_parameter("altServices").get_parameter_value().bool_value
@@ -98,19 +97,18 @@ class CFDPWrapper(Node):
         # self.declare_parameter('pduTopicPrefix', "cfdp/pdu/entity")
         pduTopicPrefix = self.get_parameter("pduTopicPrefix").get_parameter_value().string_value
 
-        
         cfgDescriptor = ParameterDescriptor(description='Load additional configuration parameters from file')
         self.declare_parameter("config",
-                               os.path.join( get_package_share_directory("cfdp_wrapper"), 'config', "cfdp_config.yaml"))
+                               os.path.join(get_package_share_directory("cfdp_wrapper"), 'config', "cfdp_config.yaml"))
         cfg_file = self.get_parameter("config").get_parameter_value().string_value
-        
+
         # Load entities from cfg_file (or directly from ROS parameters if possible)
         with open(cfg_file, "r") as rawcfgfile:
-                  raw_cfg = yaml.safe_load(rawcfgfile)
-                  self.entities = {}
-                  for entity in raw_cfg['entities']:
-                      self.entities[entity['id']] = entity
-                  
+            raw_cfg = yaml.safe_load(rawcfgfile)
+            self.entities = {}
+            for entity in raw_cfg['entities']:
+                self.entities[entity['id']] = entity
+
         self.get_logger().warn("CFDPWrapper entities: ")
         self.get_logger().warn(str(self.entities))
 
@@ -141,21 +139,19 @@ class CFDPWrapper(Node):
                 remote_cnt += 1
 
 
-        if local_cnt!=1 or remote_cnt==0:
+        if local_cnt != 1 or remote_cnt == 0:
             self.get_logger().info(f" local_cnt={local_cnt} and remote_cnt={remote_cnt}")
             raise ValueError("Local and Remote Entities must be defined to initialize this application")
         else:
             self.get_logger().warn(f"entityID={self.entityID}, cfg={cfg_file}entities= {self.entities}")
 
-                    
         # Setup CFDP Entity, Transport Service, and ROS Publisher interface
         self.cfdp_ts = RosTransport(self.entities, self.get_logger())
         self.cfdp = cfdp.CfdpEntity(
             entity_id=self.entityID,
-            filestore=NativeFileStore(self.fileStore), # path is relative to script launch dir
+            filestore=NativeFileStore(self.fileStore),  # path is relative to script launch dir
             transport=self.cfdp_ts
             )
-
 
         # Create ROS subscription for inbound MDPUs
         pduTopicName = "/" + self.entityName + "/" + pduTopicPrefix
@@ -165,7 +161,7 @@ class CFDPWrapper(Node):
                                                        pduTopicName,
                                                        # pduTopicPrefix + str(self.entityID),
                                                        self.cfdp_handle_packet, 10)
-        
+
         ### Create Services for Local/User Commanding
         # servicePrefix = "/entity"+str(self.entityID) if useAltServices else ""
         self._trigger_cfdp_cmd_ls_srv = self.create_service(CfdpXfrCmd,
@@ -190,13 +186,12 @@ class CFDPWrapper(Node):
                                                             'cfdp/cmd/rm',
                                                             self.cfdp_cmd_rm)
 
-
     def cfdp_cmd_ls(self, request, response):
         # WARNING: Doesn't work against cFE CFDP implementation
         self.get_logger().info("Issuing CFDP LS Command")
         id = self.cfdp.put(
             destination_id=request.dstid,
-            transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED if request.ack else cfdp.TransmissionMode.UNACKNOWLEDGED, 
+            transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED if request.ack else cfdp.TransmissionMode.UNACKNOWLEDGED,
             messages_to_user=[
                 cfdp.DirectoryListingRequest(
                     #remote_directory="/", local_file="/.listing.remote"
@@ -204,7 +199,7 @@ class CFDPWrapper(Node):
                 )])
         response.success = True
         return response
-    
+
     def cfdp_cmd_file(self, mode, request, response):
         # WARNING: Doesn't work against cFE CFDP implementation
         id = self.cfdp.put(
@@ -217,20 +212,19 @@ class CFDPWrapper(Node):
 
     def cfdp_cmd_mkdir(self, request, response):
         self.get_logger().info(f"Issuing CFDP mkdir Command")
-        return self.cfdp_cmd_file(cfdp.ActionCode.CREATE_DIRECTORY, request, response )
+        return self.cfdp_cmd_file(cfdp.ActionCode.CREATE_DIRECTORY, request, response)
 
     def cfdp_cmd_rmdir(self, request, response):
         self.get_logger().info(f"Issuing CFDP rmdir Command")
-        return self.cfdp_cmd_file(cfdp.ActionCode.REMOVE_DIRECTORY, request, response )
+        return self.cfdp_cmd_file(cfdp.ActionCode.REMOVE_DIRECTORY, request, response)
 
     def cfdp_cmd_touch(self, request, response):
         self.get_logger().info(f"Issuing CFDP touch Command")
-        return self.cfdp_cmd_file(cfdp.ActionCode.CREATE_FILE, request, response )
+        return self.cfdp_cmd_file(cfdp.ActionCode.CREATE_FILE, request, response)
 
     def cfdp_cmd_rm(self, request, response):
         self.get_logger().info(f"Issuing CFDP rm Command")
-        return self.cfdp_cmd_file(cfdp.ActionCode.DELETE_FILE, request, response )
-
+        return self.cfdp_cmd_file(cfdp.ActionCode.DELETE_FILE, request, response)
     
     def cfdp_cmd_put(self, request, response):
         dstid = request.dstid
@@ -241,12 +235,12 @@ class CFDPWrapper(Node):
         # Verify src file exists locally
         if not os.path.isfile(os.path.join(self.fileStore, srcfile)):
             self.get_logger().warn(f"Can't execute CFDP Put command for non-existent file {os.path.join(self.fileStore, srcfile)}")
-            response.success=False
+            response.success = False
             return response
-        
+
         if not self.entities[dstid]:
             self.get_logger().warn(f"Can't execute CFDP Command to unknown dstid={dstid}")
-            response.success=False
+            response.success = False
             return response
 
         try:
@@ -254,33 +248,33 @@ class CFDPWrapper(Node):
                 destination_id=dstid,
                 source_filename=srcfile,
                 destination_filename=dstfile,
-                transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED if request.ack else cfdp.TransmissionMode.UNACKNOWLEDGED, 
+                transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED if request.ack else cfdp.TransmissionMode.UNACKNOWLEDGED,
                 fault_handler_overrides={
-                    ConditionCode.POSITIVE_ACK_LIMIT_REACHED: FaultHandlerAction.ABANDON}            
+                    ConditionCode.POSITIVE_ACK_LIMIT_REACHED: FaultHandlerAction.ABANDON}
             )
-            response.success=True
+            response.success = True
         except BaseException as err:
             self.get_logger().error(f"Unable to execute PUT command for: {request}.  Err Type {type(err)}, Err: {err}")
-            response.success=False
-        
+            response.success = False
+
         return response
-    
+
     def cfdp_cmd_get(self, request, response):
         self.get_logger().info("Issuing CFDP Get " + request.src + " to " + request.dst)
 
-        if not os.path.isdir( os.path.join( self.fileStore, os.path.dirname(request.dst) ) ):
+        if not os.path.isdir(os.path.join(self.fileStore, os.path.dirname(request.dst))):
             self.get_logger().warn(f"Can't execute CFDP Get Command to invalid destination path {request.dst}.")
-            response.success=False
+            response.success = False
             return response
         if not self.entities[request.dstid]:
             self.get_logger().warn(f"Can't execute CFDP Command to unknown dstid={dstid}")
-            response.success=False
+            response.success = False
             return response
-        
+
         try:
             transaction_id = self.cfdp.put(
                 destination_id=request.dstid,
-                transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED if request.ack else cfdp.TransmissionMode.UNACKNOWLEDGED, 
+                transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED if request.ack else cfdp.TransmissionMode.UNACKNOWLEDGED,
 
                 messages_to_user=[
                     # We PUT a request to PUT a file back to us
@@ -290,13 +284,13 @@ class CFDPWrapper(Node):
                         destination_filename=request.dst)
                 ]
             )
-            response.success=True
+            response.success = True
         except Exception as err:
             self.get_logger().error(f"Unable to execute GET command for: {request}.  Err Type {type(err)}, Err: {err}")
-            response.success=False
+            response.success = False
 
         return response
-    
+
     # Handle receipt of ROS Topic containing Binary MDPU as it's content
     def cfdp_handle_packet(self, msg):
         try:
@@ -307,7 +301,7 @@ class CFDPWrapper(Node):
             bs = b''.join(msg.data)
 
             self.get_logger().debug(f"Handle receipt of msg.data=" + bs.hex())
-        
+
             self.cfdp.transport.indication(bs)
         except FileNotFoundError:
             self.get_logger().warn(f"CFDP File Error: {str(e)}")
@@ -320,7 +314,7 @@ def main(args=None):
         rclpy.spin(wrapper)
     except KeyboardInterrupt:
         print('KeyboardInterrupt seen.')
-        
+
     wrapper.destroy_node()
     rclpy.shutdown()
     wrapper.cfdp.shutdown()
