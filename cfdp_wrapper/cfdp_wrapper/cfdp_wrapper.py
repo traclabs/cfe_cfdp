@@ -76,9 +76,9 @@ class CFDPWrapper(Node):
     def __init__(self):
         super().__init__('cfdp_wrapper')
 
-        self.get_logger().warn("================================")
-        self.get_logger().warn("CFDPWrapper")
-        self.get_logger().warn("================================")
+        self.get_logger().info("================================")
+        self.get_logger().info("CFDPWrapper")
+        self.get_logger().info("================================")
 
         # Parameters
         entityParameterDescriptor = ParameterDescriptor(description='CFDP entityID for this instance. Value must be defined in the database of CFDP entities.')
@@ -101,8 +101,8 @@ class CFDPWrapper(Node):
             for entity in raw_cfg['entities']:
                 self.entities[entity['id']] = entity
 
-        self.get_logger().warn("CFDPWrapper entities: ")
-        self.get_logger().warn(str(self.entities))
+        self.get_logger().info("CFDPWrapper entities: ")
+        self.get_logger().info(str(self.entities))
 
         local_cnt = 0
         remote_cnt = 0
@@ -139,7 +139,7 @@ class CFDPWrapper(Node):
             self.get_logger().info(f" local_cnt={local_cnt} and remote_cnt={remote_cnt}")
             raise ValueError("Local and Remote Entities must be defined to initialize this application")
         else:
-            self.get_logger().warn(f"entityID={self.entityID}, cfg={cfg_file}entities= {self.entities}")
+            self.get_logger().info(f"entityID={self.entityID}, cfg={cfg_file}entities= {self.entities}")
 
         # Setup CFDP Entity, Transport Service, and ROS Publisher interface
         self.cfdp_ts = RosTransport(self.entities, logger=self.get_logger())
