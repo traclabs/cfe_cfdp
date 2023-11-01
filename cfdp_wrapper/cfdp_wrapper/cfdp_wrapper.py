@@ -54,7 +54,7 @@ class RosTransport(Transport):
         # ROS doesn't seem to allow a msg definition of a simple bytes array, so we must split it
         #  into an array of individual byte objects (byte[])
         msg_data = [i.to_bytes(1, sys.byteorder) for i in data]
-        #self.logger.info(f"publish msg.data=" + data.hex())
+        self.logger.debug(f"publish msg.data=" + data.hex())
 
         entity['publisher'].publish(BinaryPktPayload(data=msg_data))
         self.sent = self.sent + 1
@@ -88,14 +88,6 @@ class CFDPWrapper(Node):
         filestoreDescriptor = ParameterDescriptor(description='The base path (relative to script launch location) for all local file operations')
         self.declare_parameter("filestore", "cfdp/rosfsw", filestoreDescriptor)
         self.fileStore = self.get_parameter("filestore").get_parameter_value().string_value
-        # altServicesDesc = ParameterDescriptor(description="If true, append '/$entityID' to all generated services to enable testing with multiple instances")
-        # self.declare_parameter('altServices', False)
-        # useAltServices = self.get_parameter("altServices").get_parameter_value().bool_value
-
-        pduPrefixDesc = ParameterDescriptor(description="Define topic prefix (with entityID appended) for all PDU subscriptions and publications.")
-        self.declare_parameter('pduTopicPrefix', "cfdp/pdu")
-        # self.declare_parameter('pduTopicPrefix', "cfdp/pdu/entity")
-        pduTopicPrefix = self.get_parameter("pduTopicPrefix").get_parameter_value().string_value
 
         cfgDescriptor = ParameterDescriptor(description='Load additional configuration parameters from file')
         self.declare_parameter("config",
@@ -127,17 +119,21 @@ class CFDPWrapper(Node):
                 local_cnt += 1
                 self.entityName = entity['name']
             else:
-                pduTopicName = "/" + entity['name'] + "/" + pduTopicPrefix
-                # pdu_pub = self.get_logger().info(f" Creating publisher of " + pduTopicName + str(entity['id']))
-                pdu_pub = self.get_logger().info(f" Creating publisher of " + pduTopicName)
+                pduTopicName = "/" + entity['name'] + "/cfdp/pdu"
+                pdu_pub = self.get_logger().info(f"CFDP App creating publisher " + pduTopicName)
                 entity['publisher'] = self.create_publisher(
                     BinaryPktPayload,
                     pduTopicName,
-                    # pduTopicPrefix + str(entity['id']),
                     10
                 )
                 remote_cnt += 1
 
+        # Create ROS subscription for inbound MDPUs
+        pduTopicName = "/" + self.entityName + "/cfdp/pdu"
+        self.get_logger().info('CFDP App subscribing to ' + pduTopicName)
+        self._subscribe_pdu = self.create_subscription(BinaryPktPayload,
+                                                       pduTopicName,
+                                                       self.cfdp_handle_packet, 10)
 
         if local_cnt != 1 or remote_cnt == 0:
             self.get_logger().info(f" local_cnt={local_cnt} and remote_cnt={remote_cnt}")
@@ -153,17 +149,7 @@ class CFDPWrapper(Node):
             transport=self.cfdp_ts
             )
 
-        # Create ROS subscription for inbound MDPUs
-        pduTopicName = "/" + self.entityName + "/" + pduTopicPrefix
-        # self.get_logger().info('CFDP App Subscribing to ' + pduTopicPrefix + str(self.entityID))
-        self.get_logger().info('CFDP App Subscribing to ' + pduTopicName)
-        self._subscribe_pdu = self.create_subscription(BinaryPktPayload,
-                                                       pduTopicName,
-                                                       # pduTopicPrefix + str(self.entityID),
-                                                       self.cfdp_handle_packet, 10)
-
         ### Create Services for Local/User Commanding
-        # servicePrefix = "/entity"+str(self.entityID) if useAltServices else ""
         self._trigger_cfdp_cmd_ls_srv = self.create_service(CfdpXfrCmd,
                                                             'cfdp/cmd/ls',
                                                             self.cfdp_cmd_ls)
@@ -194,7 +180,6 @@ class CFDPWrapper(Node):
             transmission_mode=cfdp.TransmissionMode.ACKNOWLEDGED if request.ack else cfdp.TransmissionMode.UNACKNOWLEDGED,
             messages_to_user=[
                 cfdp.DirectoryListingRequest(
-                    #remote_directory="/", local_file="/.listing.remote"
                     remote_directory=request.src, local_file=request.dst
                 )])
         response.success = True
@@ -299,9 +284,7 @@ class CFDPWrapper(Node):
             # Python + ROS usage of byte definitions are inconsistent, so we need to
             # explicitly rejoin an array of individual bytes into a bytes object
             bs = b''.join(msg.data)
-
             self.get_logger().debug(f"Handle receipt of msg.data=" + bs.hex())
-
             self.cfdp.transport.indication(bs)
         except FileNotFoundError:
             self.get_logger().warn(f"CFDP File Error: {str(e)}")
