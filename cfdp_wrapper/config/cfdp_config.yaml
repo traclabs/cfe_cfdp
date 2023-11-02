@@ -1,9 +1,9 @@
 entities:
-- name: "GSW-ROS"
+- name: "groundsystem"
   id: 1
-- name: "FSW-ROS"
+- name: "flightsystem"
   id: 2
-- name: "cFE"
+- name: "cfe"
   id: 25
 
 
