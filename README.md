@@ -1,41 +1,3 @@
-# Usage Examples
-
-The following series of example commands starts 2 instances of the service under a single ROS machine and executes a series of commands.
-
-Start CFDP ROS Fsw and Gsw instances using explicit parameters.  Default values are suitable for RosFsw instance when RosGsw is on a discrete Ros machine.
-- `ros2 run cfdp_wrapper cfdp_wrapper.py --ros-args -r __node:=cfdpgsw -p entityID:=1 -p "filestore:=cfdp/rosgsw"`
-- `ros2 run cfdp_wrapper cfdp_wrapper.py --ros-args -r __node:=cfdpfsw -p entityID:=2 -p altServices:=True -p "filestore:=cfdp/rosfsw" -p "pduTopicPrefix:=/rosfsw/cfdp/pdu/entity"`
-
-Directory listing (CFDP RosGsw requests from CFDP RosFsw)
-- `ros2 service call /cfdp/cmd/ls cfdp_msgs/srv/CfdpXfrCmd "{src: '/', dst: '/dst1_dirlisting.txt', dstid: 2}"`
-
-Transfer a file from CFDP RosGsw to CFDP RosFsw
-- `ros2 service call /cfdp/cmd/put cfdp_msgs/srv/CfdpXfrCmd "{src: '/dst1_dirlisting.txt', dst: '/echodst1_dirlisting.txt', dstid: 2}"`
-
-Get a file from CFDP RosFsw (send request from RosGsw)
-- `ros2 service call /cfdp/cmd/get cfdp_msgs/srv/CfdpXfrCmd "{src: '/echodst1_dirlisting.txt', dst: '/echodst1_dirlisting.txt', dstid: 2}"`
-
-Command RosFsw CFDP to initiate a put to RosGSW CFDP
-- `ros2 service call /cfdp/cmd/put/entity2 cfdp_msgs/srv/CfdpXfrCmd '{src: "test.txt", dst: "/gswtestdst83a.txt", "dstid":1}'`
-
-CFDP RosGsw to Fsw (put)
-- `"ros2 service call /cfdp/cmd/put cfdp_msgs/srv/CfdpXfrCmd '{\"src\": \"gswtest.txt\", \"dst\": \"/cf/gswtestdst724c.txt\", \"dstid\":25}'"`
-CFDP Fsw to RosFsw (put)
-- `fsw-extract cmd 127.0.0.1 --port 1234 --cmd CF.TX --args '{"cfdp_class":0,"keep":1,"chan_num":1,"priority":0,"dest_id":2,"src_filename":"/cf/gswtestdst714a.txt","dst_filename":"fsw2rfsw724e.txt"}'`
-CFDP RosFsw to Fsw (put)
-- `"ros2 service call /cfdp/cmd/put/entity2 cfdp_msgs/srv/CfdpXfrCmd '{src: \"test.txt\", dst: \"/cf/fswtestdst724f.txt\", \"dstid\":25}'"`
-CFDP RosGsw to RosFsw (put)
-- `"ros2 service call /cfdp/cmd/put cfdp_msgs/srv/CfdpXfrCmd '{src: \"gswtest.txt\", dst: \"/fswtestdst83c.txt\", \"dstid\":2}'"`
-CFDP RosFsw to RosGsw (put)
-- `"ros2 service call /cfdp/cmd/put/entity2 cfdp_msgs/srv/CfdpXfrCmd '{src: \"test.txt\", dst: \"/gswtestdst83a.txt\", \"dstid\":1}'"`
-
-
-
-
-Caveats:
-- ls and get commands do NOT work against the cFE CF[DP] application at this time (not supported). Use the CF app commands instead for equivalent functionality.
-
-
 # Overview
 This repository defines a ROS2 application implementing the CCSDS File Delivery Protocol (CFDP), as implemented by the open-source Python3 CFDP library.  This dependency can be installed with `pip install cfdp`
 
@@ -176,3 +138,67 @@ outgoing PDUs, and is used to construct the topic
 altServices is a boolean parameter that causes this instance to append  `/entity$entityId` to all command services it is listening on.  This allows multiple CFDP application instances to operate on a single ROS instance for test purposes (be sure to also specify an alternate ROS Node name for each).
 
 
+# Usage & Configuration Examples
+
+## CFDP Entities
+
+This table shows CFDP Entity IDs, the corresponding container name (when using brash_docker demo), and the corresponding ROS Topic prefixes.  PDUs are sent by default on topics of the form /$prefix/cfdp/pdu
+
+| EntityID | Container Name | ROS Prefix   |
+|----------|----------------|--------------|
+| 1        | rosgsw         | groundsystem |
+| 2        | rosfsw         | flightsystem |
+| 25       | fsw            | cfe          |
+
+## Identifiers
+
+This is a listing of all identifiers (topics, ids, etc.) involved when using the example brash_docker (or multihost) configuration
+- See the Comands section below for sample commands corresponding to each cmd column with an entry.  Blank cells represent combinations that are not applicable, or not currently possible.
+- The Cfe CH column is used internally by the CFE CF application and is not currently used for ros-to-ros transfers.
+- 'gsw-topic' refers to the topic generated on rosgsw, with 'cmd' being messages sent out and 'tlm' being packets received
+- 'sbn'-topic' similarly refers to rosfsw topics as sent on the SBN bridge ('tlm') or received ('cmd'). Note: Despite the naming convention, the CCSDS packets can be of CMD or TLM variants in either direction.
+- This table reflects the IDs/topics for messages flowing from src to dst only. Any replies, including ACKs/NAKs, will use the MIDS/topics for the row corresponding to that message flow.
+
+| Src    | Dst    | Cfe Ch | MID  | gsw-topic-cmd | gsw-topic-tlm | sbn-topic-tlm | sbn-topic-cmd | Note                     | rosgsw cmd | rosfsw cmd | cfe cmd via rosgsw |
+|--------|--------|--------|------|---------------|---------------|---------------|---------------|--------------------------|------------|------------|--------------------|
+| rosgsw | rosfsw | 2      | 18ca | flightsystem  |               | flightsystem  |               |                          | put        | get        |                    |
+| rosgsw | fsw    | 0      | 18c8 | cfe           |               |               |               |                          | put        |            |                    |
+| fsw    | rosfsw | 1      | 8c3  |               |               | flightsystem  |               |                          |            |            | TX                 |
+| fsw    | rosgsw | 0      | 8c2  |               | groundsystem  |               |               |                          |            |            | TX                 |
+| rosfsw | rosgsw | 2      | 8c4  |               | groundsystem  |               | groundsystem  |                          | get        | put        |                    |
+| rosfsw | fsw    | 1      | 18c9 |               |               |               | cfe           | UNACK Only (Known Issue) |            | put        |                    |
+
+
+## Commands
+
+The following series of example commands starts 2 instances of the service under a single ROS machine and executes a series of commands.
+
+Start CFDP ROS Fsw and Gsw instances using explicit parameters.  Default values are suitable for RosFsw instance when RosGsw is on a discrete Ros machine.
+- `ros2 run cfdp_wrapper cfdp_wrapper.py --ros-args -r __node:=cfdpgsw -p entityID:=1 -p "filestore:=cfdp/rosgsw"`
+- `ros2 run cfdp_wrapper cfdp_wrapper.py --ros-args -r __node:=cfdpfsw -p entityID:=2 -p altServices:=True -p "filestore:=cfdp/rosfsw" -p "pduTopicPrefix:=/rosfsw/cfdp/pdu/entity"`
+
+Directory listing
+- rosfsw listing requested by rosgsw: `ros2 service call /cfdp/cmd/ls cfdp_msgs/srv/CfdpXfrCmd "{src: '/', dst: '/dst1_dirlisting.txt', dstid: 2}"`
+- rosgsw listing requested by rosfsw: `ros2 service call /cfdp/cmd/ls cfdp_msgs/srv/CfdpXfrCmd "{src: '/', dst: '/dst2_dirlisting.txt', dstid: 1}"`
+- fsw listing: NOT AVAILABLE (limitation of nasa CF application)
+
+Transfer a file from RosGsw to RosFsw
+- Put from rosgsw: `ros2 service call /cfdp/cmd/put cfdp_msgs/srv/CfdpXfrCmd "{src: '/dst1_dirlisting.txt', dst: '/echodst1_dirlisting.txt', dstid: 2}"`
+- Get from rosfsw: `ros2 service call /cfdp/cmd/get cfdp_msgs/srv/CfdpXfrCmd "{dst: '/dst1_dirlisting.txt', src: '/echodst1_dirlisting.txt', dstid: 1}"`
+
+Transfer a file from RosFsw to RosGsw
+- Get from rosgsw: `ros2 service call /cfdp/cmd/get cfdp_msgs/srv/CfdpXfrCmd "{src: '/echodst1_dirlisting.txt', dst: '/echodst1_dirlisting.txt', dstid: 2}"`
+- Put from rosfsw: `ros2 service call /cfdp/cmd/put cfdp_msgs/srv/CfdpXfrCmd "{src: '/echodst1_dirlisting.txt', dst: '/echodst1_dirlisting.txt', dstid: 1}"`
+
+Transfer a file to FSW (from either rosfsw or rosgsw)
+- `ros2 service call /cfdp/cmd/put cfdp_msgs/srv/CfdpXfrCmd '{\"src\": \"gswtest.txt\", \"dst\": \"/cf/gswtestdst724c.txt\", \"dstid\":25}'`
+
+CFDP Fsw to RosFsw (put)
+- TODO
+- `fsw-extract cmd 127.0.0.1 --port 1234 --cmd CF.TX --args '{"cfdp_class":0,"keep":1,"chan_num":1,"priority":0,"dest_id":2,"src_filename":"/cf/gswtestdst714a.txt","dst_filename":"fsw2rfsw724e.txt"}'`
+
+
+
+
+Caveats:
+- ls and get commands do NOT work against the cFE CF[DP] application at this time (not supported). Use the CF app commands instead for equivalent functionality.
